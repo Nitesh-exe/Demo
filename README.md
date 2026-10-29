@@ -860,7 +860,129 @@ Successfully created and executed PL/SQL stored procedures and functions to upda
 ## PL/SQL / Implementation Code
 
 ```sql
+SET SERVEROUTPUT ON;
 
+-- STEP 1: Drop existing objects if they exist
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP PROCEDURE IncreaseSalary';
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE != -4043 THEN
+            RAISE;
+        END IF;
+END;
+/
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP FUNCTION GetAvgSalary';
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE != -4043 THEN
+            RAISE;
+        END IF;
+END;
+/
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE employees CASCADE CONSTRAINTS';
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE != -942 THEN
+            RAISE;
+        END IF;
+END;
+/
+
+-- STEP 2: Create employee table
+
+CREATE TABLE employees (
+    emp_id NUMBER PRIMARY KEY,
+    emp_name VARCHAR2(50),
+    department_id NUMBER,
+    salary NUMBER(10,2)
+);
+
+-- STEP 3: Insert sample employee records
+
+INSERT INTO employees VALUES (1, 'Amit', 10, 30000);
+INSERT INTO employees VALUES (2, 'Rahul', 10, 40000);
+INSERT INTO employees VALUES (3, 'Priya', 10, 50000);
+INSERT INTO employees VALUES (4, 'Sneha', 20, 35000);
+INSERT INTO employees VALUES (5, 'Rohit', 20, 45000);
+
+COMMIT;
+
+-- STEP 4: Create stored procedure to increase salaries
+
+CREATE OR REPLACE PROCEDURE IncreaseSalary (
+    p_department_id IN NUMBER,
+    p_percentage IN NUMBER
+)
+AS
+BEGIN
+    UPDATE employees
+    SET salary = salary + (salary * p_percentage / 100)
+    WHERE department_id = p_department_id;
+
+    DBMS_OUTPUT.PUT_LINE(
+        'Salary updated for department ' || p_department_id
+    );
+
+    DBMS_OUTPUT.PUT_LINE(
+        'Percentage increase: ' || p_percentage || '%'
+    );
+
+    DBMS_OUTPUT.PUT_LINE(
+        'Employees updated: ' || SQL%ROWCOUNT
+    );
+END;
+/
+
+-- STEP 5: Create function to calculate average salary
+
+CREATE OR REPLACE FUNCTION GetAvgSalary (
+    p_department_id IN NUMBER
+)
+RETURN NUMBER
+AS
+    v_avg_salary NUMBER;
+BEGIN
+    SELECT AVG(salary)
+    INTO v_avg_salary
+    FROM employees
+    WHERE department_id = p_department_id;
+
+    RETURN v_avg_salary;
+END;
+/
+
+-- STEP 6: Execute procedure and function
+
+DECLARE
+    v_average_salary NUMBER;
+BEGIN
+    IncreaseSalary(10, 10);
+
+    v_average_salary := GetAvgSalary(10);
+
+    DBMS_OUTPUT.PUT_LINE(
+        'Average salary of department 10: ' ||
+        TO_CHAR(v_average_salary, 'FM999999990.00')
+    );
+END;
+/
+
+-- STEP 7: Display updated employee records
+
+SELECT * FROM employees ORDER BY emp_id;
+
+-- STEP 8: Display average salary of each department
+
+SELECT department_id, AVG(salary) AS average_salary
+FROM employees
+GROUP BY department_id
+ORDER BY department_id;
 ```
 
 ---
@@ -903,7 +1025,81 @@ Successfully implemented and tested row-level and statement-level database trigg
 ## SQL / Implementation Code
 
 ```sql
+-- Step 1: Create the Database
+CREATE DATABASE company_db;
+USE company_db;
 
+-- Step 2: Create the Employees Table
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    name VARCHAR(50),
+    salary DECIMAL(10,2),
+    dept VARCHAR(30)
+);
+
+-- Step 3: Create the Audit Log Table
+CREATE TABLE audit_log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    emp_id INT NULL,
+    action VARCHAR(100),
+    log_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Step 4: Insert Sample Data
+INSERT INTO employees VALUES
+(1, 'Alice', 50000, 'HR'),
+(2, 'Bob', 60000, 'IT');
+
+-- Step 5: Create a Row-Level Trigger for Salary Updates
+DELIMITER //
+
+CREATE TRIGGER trg_row_salary_update
+AFTER UPDATE ON employees
+FOR EACH ROW
+BEGIN
+    IF OLD.salary <> NEW.salary THEN
+        INSERT INTO audit_log (emp_id, action)
+        VALUES (NEW.emp_id, 'Salary updated');
+    END IF;
+END //
+
+DELIMITER ;
+
+-- Step 6: Create a Row-Level Trigger for General Updates
+DELIMITER //
+
+CREATE TRIGGER trg_row_statement_update
+AFTER UPDATE ON employees
+FOR EACH ROW
+BEGIN
+    INSERT INTO audit_log (emp_id, action)
+    VALUES (NEW.emp_id, 'Employee record updated');
+END //
+
+DELIMITER ;
+
+-- Step 7: Test the Triggers
+
+-- Update Alice's salary
+UPDATE employees
+SET salary = salary + 1000
+WHERE emp_id = 1;
+
+-- Update Bob's department
+UPDATE employees
+SET dept = 'Finance'
+WHERE emp_id = 2;
+
+-- Update multiple employees
+UPDATE employees
+SET salary = salary + 500
+WHERE dept IN ('HR', 'Finance');
+
+-- Step 8: Display Employee Records
+SELECT * FROM employees;
+
+-- Step 9: Display Audit Logs
+SELECT * FROM audit_log;
 ```
 
 ---
@@ -941,8 +1137,73 @@ The `use company` command selects the company database, creating it when data is
 
 Successfully created a MongoDB database and implemented CRUD operations on employee documents, demonstrating document storage, data retrieval, conditional updates, and deletion using MongoDB Shell commands.
 
+
+mongosh experiment10.js
+
 ## MongoDB / Implementation Code
 
 ```javascript
+db = db.getSiblingDB("company");
+
+if (!db.getCollectionNames().includes("employees")) {
+    db.createCollection("employees");
+}
+
+db.employees.deleteMany({});
+
+db.employees.insertMany([
+    {
+        emp_id: 101,
+        name: "Alice",
+        department: "HR",
+        salary: 50000
+    },
+    {
+        emp_id: 102,
+        name: "Bob",
+        department: "IT",
+        salary: 60000
+    },
+    {
+        emp_id: 103,
+        name: "Charlie",
+        department: "Finance",
+        salary: 55000
+    }
+]);
+
+print("\n--- CREATE: All inserted employees ---");
+db.employees.find().forEach(printjson);
+
+print("\n--- READ: IT department employees ---");
+db.employees.find({ department: "IT" }).forEach(printjson);
+
+print("\n--- READ: Employee names and salaries ---");
+db.employees.find(
+    {},
+    { _id: 0, name: 1, salary: 1 }
+).forEach(printjson);
+
+db.employees.updateOne(
+    { emp_id: 103 },
+    { $set: { salary: 58000 } }
+);
+
+db.employees.updateMany(
+    { department: "IT" },
+    { $inc: { salary: 2000 } }
+);
+
+print("\n--- UPDATE: Employees after salary changes ---");
+db.employees.find().forEach(printjson);
+
+db.employees.deleteOne({ emp_id: 101 });
+
+db.employees.deleteMany({ department: "HR" });
+
+print("\n--- DELETE: Remaining employees ---");
+db.employees.find().forEach(printjson);
+
+print("\nExperiment completed successfully.");
 
 ```
